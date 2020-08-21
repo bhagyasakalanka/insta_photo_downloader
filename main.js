@@ -17,12 +17,7 @@ const fb_pass = "";
 const maxImagePerUsername = 30;
 
 //username list ----- add new usernames -----
-const usernames = [
-  "sineth_dilshan_",
-  "aleksandra_79vs",
-  "shameen_priyankara",
-  "charithrajitha",
-];
+const usernames = [];
 
 (async () => {
   await urlScraper(
