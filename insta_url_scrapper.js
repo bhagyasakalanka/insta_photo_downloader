@@ -1,12 +1,11 @@
 const puppeteer = require("puppeteer");
-var fs = require("fs");
+const fs = require("fs");
+const https = require('https');
 
 exports.urlScrapper = async (
   usernames,
-  maxImagePerUsername,
-  outputFile,
-  fb_email,
-  fb_pass,
+  insta_username,
+  insta_pass,
   dirAbsPath
 ) => {
   const args = ["--disable-setuid-sandbox", "--no-sandbox"];
@@ -27,22 +26,34 @@ exports.urlScrapper = async (
 
   await page.goto("https://www.instagram.com/accounts/login");
 
-  //   await page.click(
-  //     "#react-root > section > main > div > div._2z6nI > article > div:nth-child(1) > div > div:nth-child(1) > div:nth-child(1)"
-  //   );
+
+  // Function to download image from URL
+  const downloadImage = (url, filePath) => {
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(filePath);
+      https.get(url, response => {
+        response.pipe(file);
+        file.on('finish', () => {
+          file.close(resolve(filePath));
+        });
+      }).on('error', error => {
+        fs.unlink(filePath, () => reject(error)); // Delete the file async if an error occurs
+      });
+    });
+  };
 
   try {
-    await page.waitForSelector(
-      "#loginForm > div > div:nth-child(5) > button > span.KPnG0",
-      { timeout: 10000 }
-    );
-    await page.click(
-      "#loginForm > div > div:nth-child(5) > button > span.KPnG0"
-    );
-    await page.waitForSelector("#email", { timeout: 3000 });
-    await page.type("#email", fb_email);
-    await page.type("#pass", fb_pass);
-    await page.click("#loginbutton");
+    
+    await page.waitForSelector("#loginForm > div > div:nth-child(1) > div > label > input", { timeout: 6000 });
+    await page.locator("#loginForm > div > div:nth-child(1) > div > label > input").fill(insta_username);
+    await page.locator("#loginForm > div > div:nth-child(2) > div > label > input").fill(insta_pass);
+    await page.locator("#loginForm > div > div:nth-child(3) > button > div").click();
+    // Dummy wait
+    try {
+      await page.waitForSelector('::-p-xpath//*[@id="mount_0_0_c6"]/div/div/div[2]/div/div/div[1]/div[2]/div/div[2]/section/main/div/header/section/div[1]/div[1]/a/h2)', {timeout: 10000});
+    } catch (error) {
+      // Do nothing
+    }
   } catch (error) {
     await page.waitForSelector("body", { timeout: 15000 });
   }
@@ -52,73 +63,33 @@ exports.urlScrapper = async (
     try {
       await page.goto("https://www.instagram.com/" + username);
 
-      let outterCount = 0;
       try {
-        while (outterCount < Math.floor(maxImagePerUsername / 3)) {
-          outterCount++;
-          let innerCount = 0;
-          while (innerCount < 3) {
-            innerCount++;
-            var photoSelector =
-              "#react-root > section > main > div > div._2z6nI > article > div:nth-child(1) > div > div:nth-child(" +
-              outterCount +
-              ") > div:nth-child(" +
-              innerCount +
-              ")";
-            await page.waitForSelector(photoSelector, { timeout: 8000 });
-            await page.click(photoSelector);
-            await page.waitForSelector(
-              "body > div._2dDPU.CkGkG > div.zZYga > div > article > div.MEAGs > button > div > div > svg",
-              { timeout: 8000 }
-            );
-            await page.click(
-              "body > div._2dDPU.CkGkG > div.zZYga > div > article > div.MEAGs > button > div > div > svg"
-            );
-            const [button] = await page.$x(
-              "//button[contains(., 'Copy Link')]",
-              { timeout: 3000 }
-            );
-            if (button) {
-              await button.click();
+        
+            try {
+              await page.waitForSelector('::-p-xpath//*[@id="mount_0_0_c6"]/div/div/div[2]/div/div/div[1]/div[2]/div/div[2]/section/main/div/header/section/div[1]/div[1]/a/h2)', {timeout: 10000});
+            } catch (error) {
+              // Do nothing
             }
-            // await page.waitForSelector("Copy Link", { timeout: 3000 });
-            // await page.click(
-            //   "body > div.RnEpo.Yx5HN > div > div > div > div > button:nth-child(5)"
-            // );
-            await page.click(
-              "body > div._2dDPU.CkGkG > div.Igw0E.IwRSH.eGOV_._4EzTm.BI4qX.qJPeX.fm1AK.TxciK.yiMZG > button > div > svg",
-              { timeout: 4000 }
-            );
+            await page.waitForSelector('img');
 
-            const page2 = await browser.newPage();
-            await page2.setViewport({
-              width: 1000,
-              height: 1000,
-            });
-            await page2.goto("file://" + dirAbsPath + "/text-area.html");
+            // Extract image URLs
+            const imgUrls = await page.$$eval('img', imgs => imgs.map(img => img.src));
+            for (let i = 2; i < imgUrls.length; i++) {
+              console.log(imgUrls[i])
+              let imageName = dirAbsPath + username + "_" + (i - 2) + ".jpg";
+              console.log(imageName)
+              downloadImage(imgUrls[i],imageName)
+                .then(downloadedFilePath => {
+                  console.log(`Image downloaded to ${downloadedFilePath}`);
+                })
+                .catch(error => {
+                  console.error(`Error downloading image: ${error}`);
+                });
+            };
 
-            const input = await page2.$("#mytext");
-            await input.focus();
-
-            await page2.keyboard.down("Control");
-            await page2.keyboard.press("V");
-            await page2.keyboard.up("Control");
-
-            const element = await page2.$("#mytext");
-
-            const fileUrl = await page2.evaluate(
-              (element) => element.value,
-              element
-            );
-
-            fs.appendFile(outputFile, fileUrl + "\n", (err) => {
-              if (err) console.log(err);
-            });
-            await page2.close();
-          }
-        }
       } catch (error) {
-        console.log("all photos downloaded for the user: " + username);
+        console.error(error)
+        console.log("all photos downloaded for the user: " + username);x
       }
     } catch (error) {
       console.log("no access or no photo found for the user: " + username);
